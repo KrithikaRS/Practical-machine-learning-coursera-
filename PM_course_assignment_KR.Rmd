@@ -1,0 +1,91 @@
+---
+title: "PML_course_assignment"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r load packages}
+library(caret)
+library(rattle)
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(nnet)
+```
+
+
+```{r load training data}
+## load training and testing data
+input_train= "/Users/ram5ge/Desktop/R scripts/pml-training.csv"
+input_test = "/Users/ram5ge/Desktop/R scripts/pml-testing.csv"
+input <- read.csv(input_train)
+
+inTrain<- createDataPartition(y = input$classe, p = 0.7, list = FALSE)
+training <- input[inTrain, ]
+validation <- input[-inTrain,]
+test <- read.csv(input_test)
+unique(training$classe)
+## outcome variable is of ordinal catergory 
+```
+```{r filter traindata}
+## filter features with missinng values >50% and near zero variance 
+new_train<-training[, which(colMeans(!is.na(training)) > 0.50)]
+nzv_cols <- nearZeroVar(new_train)
+nzv_cols <- nearZeroVar(new_train)
+if(length(nzv_cols) > 0) new_train1 <- new_train[, -nzv_cols]
+names(new_train1)
+##Since the dubmbell lifts are the crucial variables that classifies qualitative performances of the subjects, variable involving dumbell lifts are used for prediction
+new_train2<-new_train1[ , grepl( "dumbbell" , names( new_train1) ) ]
+new_train2$classe<- new_train1$classe
+new_train2$user_name<- new_train1$user_name
+names(new_train2)
+## final list of predictors used fr model building
+```
+
+```{r filter validation and test data}
+##Keep only the features present in the filtered training dataset
+cols_to_keep <- intersect(colnames(new_train2), colnames(test))
+cols_to_keep
+new_validation<- validation[, cols_to_keep, drop=FALSE]
+new_validation$classe<- validation$classe
+
+new_test <- test[, cols_to_keep, drop=FALSE]
+new_test$problem_id <- test$problem_id
+```
+```{r model prediction}
+# since the outcome varibale is a class variable or ordinal variable, this is attempted as a classification prediction problem
+##Hence methods like classification tree, random forest, KNN are considered as suitable prediction methods.
+# First attempted with rpart classification is used to build model using training set
+fitControl <- trainControl(method = "cv",number = 5)
+set.seed(8356)
+
+modFit<-train(classe~., data = new_train2, method = "rpart", trControl =fitControl)
+## after building model.It was tested using validation set as intermediate cross validation
+pred1<-predict(modFit, new_validation)
+summary(pred1)
+confusionMatrix(pred1, new_validation$classe)
+### The accuracy of this method is not great, 0.3. with significant p-value
+# Secondly the same data is classified using K-nearest neighbor method is used to build another model for comparison and the classes are compared
+modFit2 <- train(classe~., data=new_train2, method="knn", trControl=fitControl)
+pred2 <- predict(modFit2, new_validation)
+pred2
+table(pred2, new_validation$classe)
+##Here the accuracy of the prediction was greater than 30%. So it was used for prediction in the test data
+qplot(pred1, pred2, color = classe, data = new_validation)
+##Note:application of random forest method would have been a appropriate method as well. But it was computationally expensive and causes the system to break.
+```
+```{r test predictions}
+pred_test <- predict(modFit2, new_test)
+pred_test
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
